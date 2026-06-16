@@ -15,6 +15,16 @@ class PaymentRepository {
     async updatePaymentStatus(paymentId, status, transactionId) {
         return await Payment.findByIdAndUpdate(paymentId, { status, transactionId }, { new: true });
     }
+
+    // all the payments of the user
+    async getPaymentsByUserId(userId) {
+        return await Payment.find({ userId });
+    }
+
+    // payment of particular order
+    async getPaymentByOrderId(orderId) {
+        return await Payment.find({ orderId });
+    }
 }
 
 module.exports = PaymentRepository;
