@@ -1,58 +1,118 @@
 const PaymentRepository = require('../repository/payment-repository');
-const { ORDER_SERVICE_URL } = require('../config/serverConfig');
+const { ORDER_SERVICE_URL, CART_SERVICE_URL } = require('../config/serverConfig');
 const axios = require('axios');
+// const { PAYMENT_METHODS } = require('../utils/constants');
+const CartClient = require('../clients/cart-client');
+const OrderClient = require('../clients/order-client');
+const Payment = require('../model/payment-model');
 
 class PaymentService {
     constructor() {
         this.paymentRepository = new PaymentRepository();
+        this.cartClient = new CartClient();
+        this.orderClient = new OrderClient();
+    }
+
+    async clearCart(userId) {
+        try {
+            await this.cartClient.clearUserCart(userId);
+        } catch (error) {
+            console.error('Cart clearing failed:', error.message);
+            /*
+            Payment is already successful. We only log the failure.
+            In production: Publish event to RabbitMQ.
+            */
+        }
+    }
+
+    async getOrderDetailsForPayment(orderId) {
+        try {
+            return await this.orderClient.getOrder(orderId);
+        } catch (error) {
+            throw new Error('Unable to fetch order details');
+        }
+        
     }
 
     async processPayment(userId, data) {
-        // 1) fetch payment method and order id from user and order service
-        const { orderId, paymentMethod, amount } = data;
-        console.log('Processing payment for orderId:', orderId, 'with payment method:', paymentMethod, 'and amount:', amount);
 
-        // 2) get order details from order service using orderId (not implemented here, just a placeholder)
-        const orderDetails = await axios.get(`${ORDER_SERVICE_URL}/api/v1/orders/${orderId}`);
-        if(!orderDetails) {
+        const { orderId, paymentMethod, amount } = data;
+
+        // 1. Fetch Order Details
+        const order = await this.getOrderDetailsForPayment(orderId);
+
+        if (!order) {
             throw new Error('Order not found');
         }
-        console.log('Order details:', orderDetails.data);
-        // 3) process payment with third party payment gateway
-        let payment = await this.paymentRepository.createPayment({
-            orderId,
-            userId,
-            amount,
-            paymentMethod,
-            status: 'PENDING'
-        });
-        // console.log('Payment created with status PENDING:', payment);
 
-        if(!payment) {
+        // 2. Check for payment method from model enum values instead of hardcoding
+        const validPaymentMethods = Payment.schema.path('paymentMethod').enumValues;
+        if (!validPaymentMethods.includes(paymentMethod)) {
+            throw new Error('Invalid payment method');
+        }
+
+        // 3. Validate Amount
+
+        if (Number(order.totalAmount) !== Number(amount)) {
+            throw new Error('Amount mismatch');
+        }
+
+        // 4. Validate Order State
+        if (order.orderStatus === 'CANCELLED' || order.paymentStatus === 'SUCCESS') {
+            throw new Error('Order cannot be paid');
+        }
+
+        // 5. Prevent Duplicate Payment
+        const existingPayment = await this.paymentRepository.getPaymentByOrderId(orderId);
+
+        if (existingPayment && existingPayment.status === 'SUCCESS') {
+            throw new Error('Payment already completed');
+        }
+
+        // 6. Create Payment Record
+        const payment =
+            await this.paymentRepository.createPayment({
+                orderId,
+                userId,
+                amount,
+                paymentMethod,
+                status: 'PENDING'
+            });
+
+        if (!payment) {
             throw new Error('Payment creation failed');
         }
 
-        // 4) update payment status in database
-        if (payment) {
+        try {
+
+            // 7. Simulate Gateway Success
             payment.status = 'SUCCESS';
             payment.transactionId = `TXN_${Date.now()}`;
-            await payment.save();
-        
-            // update order service about payment service
-            await axios.patch(`${ORDER_SERVICE_URL}/api/v1/orders/${orderId}`, {
-                orderStatus: "PLACED",
-                paymentStatus: payment.status
-            });
-        } else {
-            await axios.patch(`${ORDER_SERVICE_URL}/api/v1/orders/${orderId}`, {
-                orderStatus: "CANCELLED",
-                paymentStatus: payment.status
-            });
-        }   
 
-        // 5) return response to user and order service
-        return payment;
+            // Replace with actual payment gateway integration
+            // (Razorpay / Stripe / PayPal)
+
+            await payment.save();
+
+            // 8. Update Order Service
+            await this.orderClient.updateOrder(orderId, {
+                orderStatus: 'PLACED',
+                paymentStatus: 'SUCCESS',
+                transactionId: payment.transactionId
+            });
+
+            // 9. Clear the cart after successful payment
+            await this.clearCart(userId);
+
+            // 10. Return Success
+            return payment;
+
+        } catch (error) {
+            console.error('Post payment operation failed', error.message);
+            throw new Error('Payment completed but downstream service failed');
+        }
     }
+
     async getPaymentDetails(paymentId) {
         return await this.paymentRepository.getPaymentById(paymentId);
     }
