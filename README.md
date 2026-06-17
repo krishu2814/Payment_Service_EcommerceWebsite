@@ -151,11 +151,17 @@ Payment-Service
 
 All services of this project are part of the same microservices ecosystem:
 
-|--------|------------|--------|
-| Auth Service | https://github.com/krishu2814/Auth-Service | ✅ Active |
-| Product Service | https://github.com/krishu2814/Product-Service | ✅ Active |
-| Cart Service | https://github.com/krishu2814/Cart-Service | ✅ Active |
-| Order Service | https://github.com/krishu2814/Order-Service | ✅ Active |
+### 🧩 Services
+
+[![Auth Service](https://img.shields.io/badge/Auth_Service-Active-success?style=for-the-badge&logo=auth0)](https://github.com/krishu2814/Auth-Service)
+
+[![Product Service](https://img.shields.io/badge/Product_Service-Active-blue?style=for-the-badge&logo=product-hunt)](https://github.com/krishu2814/Product-Service)
+
+[![Cart Service](https://img.shields.io/badge/Cart_Service-Active-orange?style=for-the-badge&logo=opencart)](https://github.com/krishu2814/Cart-Service)
+
+[![Order Service](https://img.shields.io/badge/Order_Service-Active-yellow?style=for-the-badge&logo=shopify)](https://github.com/krishu2814/Order-Service)
+
+[![Payment Service](https://img.shields.io/badge/Payment_Service-Current-critical?style=for-the-badge&logo=paypal)](https://github.com/krishu2814/Payment-Service)
 
 ----
 
