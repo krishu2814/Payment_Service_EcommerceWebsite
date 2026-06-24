@@ -7,7 +7,7 @@ const PaymentController = require('../../controller/payment-controller');
 const paymentController = new PaymentController();
 
 // JWT in headers
-router.post('/pay', Authetication, paymentController.processPayment.bind(paymentController));
-router.get('/payment-details/:id', paymentController.getPaymentDetails.bind(paymentController)); 
+router.post('/', Authetication, paymentController.processPayment.bind(paymentController));
+router.get('/:id', paymentController.getPaymentDetails.bind(paymentController)); 
 
 module.exports = router;

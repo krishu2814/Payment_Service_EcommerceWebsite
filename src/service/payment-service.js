@@ -13,9 +13,9 @@ class PaymentService {
         this.orderClient = new OrderClient();
     }
 
-    async clearCart(userId) {
+    async clearCart(token) {
         try {
-            await this.cartClient.clearUserCart(userId);
+            await this.cartClient.clearUserCart(token);
         } catch (error) {
             console.error('Cart clearing failed:', error.message);
             /*
@@ -34,7 +34,7 @@ class PaymentService {
         
     }
 
-    async processPayment(userId, data) {
+    async processPayment(userId, data, token) {
 
         const { orderId, paymentMethod, amount } = data;
 
@@ -102,7 +102,7 @@ class PaymentService {
             });
 
             // 9. Clear the cart after successful payment
-            await this.clearCart(userId);
+            await this.clearCart(token);
 
             // 10. Return Success
             return payment;
