@@ -5,5 +5,6 @@ module.exports = {
     MONGO_URL: process.env.MONGO_URL,
     ORDER_SERVICE_URL: process.env.ORDER_SERVICE_URL,
     JWT_SECRET: process.env.JWT_SECRET,
-    CART_SERVICE_URL: process.env.CART_SERVICE_URL
+    CART_SERVICE_URL: process.env.CART_SERVICE_URL,
+    RABBITMQ_URL: process.env.RABBITMQ_URL,
 }

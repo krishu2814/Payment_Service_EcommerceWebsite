@@ -12,8 +12,9 @@ class PaymentController {
             console.log('User ID from JWT:', userId);
             console.log('Payment data:', req.body);
             const paymentData = req.body;
-            const token = req.headers.authorization; // JWT token for clearing cart -> later will remove it
-            const paymentResult = await this.paymentService.processPayment(userId, paymentData, token);
+            // const token = req.headers.authorization; // JWT token for clearing cart -> later will remove it
+            // const paymentResult = await this.paymentService.processPayment(userId, paymentData, token);
+            const paymentResult = await this.paymentService.processPayment(userId, paymentData);
             res.status(200).json({
                 success: true,
                 message: 'Payment processed successfully',

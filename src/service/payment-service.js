@@ -1,83 +1,71 @@
 const PaymentRepository = require('../repository/payment-repository');
-const { ORDER_SERVICE_URL, CART_SERVICE_URL } = require('../config/serverConfig');
-const axios = require('axios');
-// const { PAYMENT_METHODS } = require('../utils/constants');
-const CartClient = require('../clients/cart-client');
 const OrderClient = require('../clients/order-client');
 const Payment = require('../model/payment-model');
+const { publishEvent } = require('../config/rabbitmq');
 
 class PaymentService {
     constructor() {
         this.paymentRepository = new PaymentRepository();
-        this.cartClient = new CartClient();
         this.orderClient = new OrderClient();
     }
 
-    async clearCart(token) {
-        try {
-            await this.cartClient.clearUserCart(token);
-        } catch (error) {
-            console.error('Cart clearing failed:', error.message);
-            /*
-            Payment is already successful. We only log the failure.
-            In production: Publish event to RabbitMQ.
-            */
-        }
-    }
-
+    /**
+     * Fetch order from Order Service
+     */
     async getOrderDetailsForPayment(orderId) {
         try {
-            return await this.orderClient.getOrder(orderId);
+            const order = await this.orderClient.getOrder(orderId);
+            return order;
         } catch (error) {
             throw new Error('Unable to fetch order details');
         }
-        
     }
 
-    async processPayment(userId, data, token) {
+    /**
+     * Main payment flow (EVENT DRIVEN)
+     */
+    async processPayment(userId, data) {
 
-        const { orderId, paymentMethod, amount } = data;
+        const { orderId, paymentMethod } = data;
 
-        // 1. Fetch Order Details
+        // 1. Fetch Order
         const order = await this.getOrderDetailsForPayment(orderId);
-
-        if (!order) {
-            throw new Error('Order not found');
+        if (!order?.items?.length) {
+            throw new Error('Invalid order data');
         }
 
-        // 2. Check for payment method from model enum values instead of hardcoding
+        // 2. Amount comes from Order 
+        // Dont take from user input to avoid tampering
+        const amount = order.totalAmount;
+
+        // 3. Validate payment method
         const validPaymentMethods = Payment.schema.path('paymentMethod').enumValues;
+
         if (!validPaymentMethods.includes(paymentMethod)) {
             throw new Error('Invalid payment method');
         }
 
-        // 3. Validate Amount
-
-        if (Number(order.totalAmount) !== Number(amount)) {
-            throw new Error('Amount mismatch');
-        }
-
-        // 4. Validate Order State
+        // 4. Validate order state
         if (order.orderStatus === 'CANCELLED' || order.paymentStatus === 'SUCCESS') {
             throw new Error('Order cannot be paid');
         }
 
-        // 5. Prevent Duplicate Payment
-        const existingPayment = await this.paymentRepository.getPaymentByOrderId(orderId);
+        // 5. Idempotency check 
+        const existingPayment =
+            await this.paymentRepository.getPaymentByOrderId(orderId);
 
         if (existingPayment && existingPayment.status === 'SUCCESS') {
-            throw new Error('Payment already completed');
+            return existingPayment; // SAFE retry handling
         }
 
-        // 6. Create Payment Record
-        const payment =
-            await this.paymentRepository.createPayment({
-                orderId,
-                userId,
-                amount,
-                paymentMethod,
-                status: 'PENDING'
-            });
+        // 6. Create payment record
+        const payment = await this.paymentRepository.createPayment({
+            orderId,
+            userId,
+            amount,
+            paymentMethod,
+            status: 'PENDING'
+        });
 
         if (!payment) {
             throw new Error('Payment creation failed');
@@ -85,38 +73,50 @@ class PaymentService {
 
         try {
 
-            // 7. Simulate Gateway Success
-            payment.status = 'SUCCESS';
-            payment.transactionId = `TXN_${Date.now()}`;
+            // 7. Simulate payment success (replace with gateway later)
+            const transactionId = `TXN_${Date.now()}`;
 
-            // Replace with actual payment gateway integration
-            // (Razorpay / Stripe / PayPal)
+            payment.status = 'SUCCESS';
+            payment.transactionId = transactionId;
 
             await payment.save();
 
-            // 8. Update Order Service
-            await this.orderClient.updateOrder(orderId, {
-                orderStatus: 'PLACED',
-                paymentStatus: 'SUCCESS',
-                transactionId: payment.transactionId
-            });
+            // 8. Publish event → Order Service will handle updates
+            try {
+                await publishEvent('PAYMENT_SUCCESS', {
+                    event: 'PAYMENT_SUCCESS',
+                    orderId,
+                    userId,
+                    amount,
+                    transactionId,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (error) {
+                /**
+                 * DLQ (Dead Letter Queue) handling can be implemented here for failed events
+                 * For now, we log the error and throw a new error to indicate failure in notifying Order Service
+                 */
+                console.error('Failed to publish PAYMENT_SUCCESS event:', error.message);
+                throw new Error('Payment completed but failed to notify Order Service');
+            }
 
-            // 9. Clear the cart after successful payment
-            await this.clearCart(token);
+            // 9. DO NOT CALL CART SERVICE HERE
+            // Cart will be cleared via ORDER_CONFIRMED event
 
-            // 10. Return Success
             return payment;
 
         } catch (error) {
-            console.error('Post payment operation failed', error.message);
-            throw new Error('Payment completed but downstream service failed');
+            console.error('Payment post-processing failed:', error.message);
+            throw new Error('Payment completed but downstream processing failed');
         }
     }
 
+    /**
+     * Get payment by ID
+     */
     async getPaymentDetails(paymentId) {
         return await this.paymentRepository.getPaymentById(paymentId);
     }
-
 }
 
 module.exports = PaymentService;
