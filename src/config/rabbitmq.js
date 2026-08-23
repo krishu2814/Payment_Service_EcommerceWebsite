@@ -1,34 +1,49 @@
-const amqp = require('amqplib');
-const { RABBITMQ_URL } = require('./serverConfig');
+const amqp = require("amqplib");
+const { RABBITMQ_URL, EXCHANGE_NAME } = require("./serverConfig");
 
 let channel;
 
 const connectRabbitMQ = async () => {
-    try {
-        // 1. Connect to RabbitMQ server
-        const connection = await amqp.connect(RABBITMQ_URL);
-        // 2. Create a channel
-        channel = await connection.createChannel();
-        console.log('Connected to RabbitMQ');
-    } catch (error) {
-        console.error('Failed to connect to RabbitMQ:', error);
-    }
+  try {
+    const connection = await amqp.connect(RABBITMQ_URL);
+
+    channel = await connection.createChannel();
+
+    await channel.assertExchange(EXCHANGE_NAME, "topic", {
+      durable: true,
+    });
+
+    console.log("Connected to RabbitMQ");
+  } catch (error) {
+    console.error("Failed to connect to RabbitMQ:", error);
+    throw error;
+  }
 };
 
-const publishEvent = async (queue, message) => {
-    try {
-        if (!channel) {
-            throw new Error('RabbitMQ channel is not initialized');
-        }
-        // 1. Assert the queue (create if it doesn't exist)
-        await channel.assertQueue(queue, { durable: true });
-        // 2. Send the message to the queue
-        channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)), { persistent: true });
-        console.log(`Message sent to queue ${queue}:`, message);
-    } catch (error) {
-        console.error('Failed to publish event:', error);
-    }
+const publishEvent = async (routingKey, message) => {
+  if (!channel) {
+    throw new Error("RabbitMQ channel is not initialized");
+  }
+
+  try {
+    channel.publish(
+      EXCHANGE_NAME,
+      routingKey,
+      Buffer.from(JSON.stringify(message)),
+      {
+        persistent: true,
+        contentType: "application/json",
+      },
+    );
+
+    console.log(`Event published: ${routingKey}`);
+  } catch (error) {
+    console.error(`Failed to publish event ${routingKey}:`, error);
+    throw error;
+  }
 };
 
-module.exports = { connectRabbitMQ, publishEvent };
-
+module.exports = {
+  connectRabbitMQ,
+  publishEvent,
+};
