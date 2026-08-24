@@ -16,6 +16,15 @@ class PaymentController {
         authorization,
       );
 
+      if (paymentResult?.failed || paymentResult?.status === "FAILED") {
+        return res.status(400).json({
+          success: false,
+          message: paymentResult.reason || "Payment transaction failed",
+          data: paymentResult,
+          error: { reason: paymentResult.reason },
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: "Payment processed successfully",

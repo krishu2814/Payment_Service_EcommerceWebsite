@@ -70,16 +70,36 @@ class PaymentService {
       return existingPayment;
     }
 
+    const { simulateFailure, failureReason } = data;
+
     const payment = await this.paymentRepository.createPayment({
       orderId,
       userId,
       amount,
       paymentMethod,
-      status: "PENDING",
+      status: simulateFailure ? "FAILED" : "PENDING",
     });
 
     if (!payment) {
       throw new Error("Payment creation failed");
+    }
+
+    if (simulateFailure) {
+      const reason = failureReason || "Payment transaction was declined by bank (Simulated Failure)";
+      await publishEvent("PAYMENT_FAILED", {
+        event: "PAYMENT_FAILED",
+        orderId,
+        userId,
+        amount,
+        reason,
+        timestamp: new Date().toISOString(),
+      });
+
+      return {
+        ...payment.toObject(),
+        failed: true,
+        reason,
+      };
     }
 
     try {
@@ -101,9 +121,21 @@ class PaymentService {
 
       return payment;
     } catch (error) {
-      console.error("Payment post-processing failed:", error.message);
+      console.error("Payment processing failed:", error.message);
 
-      throw new Error("Payment completed but downstream processing failed");
+      payment.status = "FAILED";
+      await payment.save();
+
+      await publishEvent("PAYMENT_FAILED", {
+        event: "PAYMENT_FAILED",
+        orderId,
+        userId,
+        amount,
+        reason: error.message || "Payment post-processing failed",
+        timestamp: new Date().toISOString(),
+      });
+
+      throw new Error("Payment processing failed and compensation event emitted");
     }
   }
 
