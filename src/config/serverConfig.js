@@ -1,10 +1,10 @@
 require("dotenv").config();
 
 module.exports = {
-  PORT: process.env.PORT,
+  PORT: process.env.PORT || 5013,
   MONGO_URL: process.env.MONGO_URL,
   ORDER_SERVICE_URL: process.env.ORDER_SERVICE_URL,
-  JWT_SECRET: process.env.JWT_SECRET,
+  SECRET_TOKEN: process.env.SECRET_TOKEN || "krishukumar@2814",
   CART_SERVICE_URL: process.env.CART_SERVICE_URL,
   RABBITMQ_URL: process.env.RABBITMQ_URL,
   EXCHANGE_NAME: process.env.EXCHANGE_NAME || "ecommerce_events",
