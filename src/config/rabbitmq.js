@@ -20,12 +20,21 @@ const connectRabbitMQ = async () => {
   }
 };
 
-const publishEvent = async (routingKey, message) => {
+const crypto = require("crypto");
+
+const publishEvent = async (routingKey, message, options = {}) => {
   if (!channel) {
     throw new Error("RabbitMQ channel is not initialized");
   }
 
   try {
+    const correlationId =
+      options.correlationId ||
+      message.correlationId ||
+      `amqp_${crypto.randomUUID()}`;
+
+    message.correlationId = correlationId;
+
     channel.publish(
       EXCHANGE_NAME,
       routingKey,
@@ -33,10 +42,15 @@ const publishEvent = async (routingKey, message) => {
       {
         persistent: true,
         contentType: "application/json",
+        correlationId,
+        headers: {
+          "x-correlation-id": correlationId,
+          ...(options.headers || {}),
+        },
       },
     );
 
-    console.log(`Event published: ${routingKey}`);
+    console.log(`[${correlationId}] [Payment-Service] Event published: ${routingKey}`);
   } catch (error) {
     console.error(`Failed to publish event ${routingKey}:`, error);
     throw error;
