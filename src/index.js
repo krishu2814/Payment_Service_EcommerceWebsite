@@ -6,11 +6,18 @@ const { connectRabbitMQ } = require('./config/rabbitmq');
 
 const app = express();
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 app.use(require('./middleware/correlation-middleware'));
 
 app.use('/api', apiRoutes);
+
 
 const setUpAndStartServer = async () => {
 
