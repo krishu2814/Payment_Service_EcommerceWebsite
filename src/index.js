@@ -18,6 +18,9 @@ app.use(require('./middleware/correlation-middleware'));
 
 app.use('/api', apiRoutes);
 
+// Error Handling Middleware
+app.use(require('./middleware/not-found-handler'));
+app.use(require('./middleware/error-handler'));
 
 const setUpAndStartServer = async () => {
 

@@ -1,11 +1,12 @@
 const PaymentService = require("../service/payment-service");
+const { NotFoundError, BadRequestError } = require("../utils/errors/app-error");
 
 class PaymentController {
   constructor() {
     this.paymentService = new PaymentService();
   }
 
-  getGatewayConfig(req, res) {
+  getGatewayConfig(req, res, next) {
     try {
       const config = this.paymentService.getGatewayConfig();
       return res.status(200).json({
@@ -15,17 +16,11 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error fetching gateway config:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch gateway configuration",
-        data: {},
-        error: error.message,
-      });
+      return next(error);
     }
   }
 
-  async createPaymentIntent(req, res) {
+  async createPaymentIntent(req, res, next) {
     try {
       const userId = req.user.id || req.user._id;
       const authorization = req.headers.authorization;
@@ -44,17 +39,14 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error creating payment intent:", error.message);
-      return res.status(error.message.includes("not ready") ? 400 : 500).json({
-        success: false,
-        message: error.message || "Failed to initialize payment session",
-        data: {},
-        error: error.message,
-      });
+      if (error.message && error.message.includes("not ready")) {
+        return next(new BadRequestError(error.message));
+      }
+      return next(error);
     }
   }
 
-  async verifyPayment(req, res) {
+  async verifyPayment(req, res, next) {
     try {
       const userId = req.user.id || req.user._id;
       const authorization = req.headers.authorization;
@@ -66,12 +58,7 @@ class PaymentController {
       );
 
       if (!result.success) {
-        return res.status(400).json({
-          success: false,
-          message: result.reason || "Payment verification failed",
-          data: result,
-          error: { reason: result.reason },
-        });
+        return next(new BadRequestError(result.reason || "Payment verification failed", { reason: result.reason }));
       }
 
       return res.status(200).json({
@@ -81,17 +68,11 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error verifying payment:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to verify payment",
-        data: {},
-        error: error.message,
-      });
+      return next(error);
     }
   }
 
-  async processPayment(req, res) {
+  async processPayment(req, res, next) {
     try {
       const userId = req.user.id || req.user._id;
       const authorization = req.headers.authorization;
@@ -104,12 +85,7 @@ class PaymentController {
       );
 
       if (paymentResult?.failed || paymentResult?.status === "FAILED") {
-        return res.status(400).json({
-          success: false,
-          message: paymentResult.reason || "Payment transaction failed",
-          data: paymentResult,
-          error: { reason: paymentResult.reason },
-        });
+        return next(new BadRequestError(paymentResult.reason || "Payment transaction failed", { reason: paymentResult.reason }));
       }
 
       return res.status(200).json({
@@ -119,17 +95,11 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error processing payment:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to process payment",
-        data: {},
-        error: error.message,
-      });
+      return next(error);
     }
   }
 
-  async handleWebhook(req, res) {
+  async handleWebhook(req, res, next) {
     try {
       const gateway = req.params.gateway || "stripe";
       const signature =
@@ -149,26 +119,17 @@ class PaymentController {
         data: result,
       });
     } catch (error) {
-      console.error("[PaymentController] Webhook processing error:", error.message);
-      return res.status(400).json({
-        success: false,
-        message: error.message || "Webhook verification failed",
-      });
+      return next(new BadRequestError(error.message || "Webhook verification failed"));
     }
   }
 
-  async getPaymentByOrderId(req, res) {
+  async getPaymentByOrderId(req, res, next) {
     try {
       const orderId = req.params.orderId;
       const payment = await this.paymentService.getPaymentByOrderId(orderId);
 
       if (!payment) {
-        return res.status(404).json({
-          success: false,
-          message: "Payment record not found for this order",
-          data: {},
-          error: {},
-        });
+        return next(new NotFoundError("Payment record not found for this order"));
       }
 
       return res.status(200).json({
@@ -178,28 +139,17 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error fetching payment by order ID:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch payment details",
-        data: {},
-        error: error.message,
-      });
+      return next(error);
     }
   }
 
-  async getPaymentDetails(req, res) {
+  async getPaymentDetails(req, res, next) {
     try {
       const paymentId = req.params.id;
       const paymentDetails = await this.paymentService.getPaymentDetails(paymentId);
 
       if (!paymentDetails) {
-        return res.status(404).json({
-          success: false,
-          message: "Payment not found",
-          data: {},
-          error: {},
-        });
+        return next(new NotFoundError("Payment not found"));
       }
 
       return res.status(200).json({
@@ -209,13 +159,7 @@ class PaymentController {
         error: {},
       });
     } catch (error) {
-      console.error("[PaymentController] Error fetching payment details:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch payment details",
-        data: {},
-        error: error.message,
-      });
+      return next(error);
     }
   }
 }
